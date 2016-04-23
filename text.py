@@ -39,7 +39,19 @@ class Font(object):
     def __init__(self, fontfile, size=10, ch=' '):
         self.ch = ch 
         self.face = freetype.Face(fontfile)
+        self.matrix = None
         self.set_size(size)
+
+    def set_transform(self, angle, offset=(0, 0)):
+        matrix = freetype.FT_Matrix()
+        pen = freetype.FT_Vector()
+        matrix.xx = int(math.cos(angle) * 0x10000)
+        matrix.xy = int(-math.sin(angle) * 0x10000)
+        matrix.yx = int(math.sin(angle) * 0x10000)
+        matrix.yy = int(math.cos(angle) * 0x10000)
+        pen.x = offset[0]
+        pen.y = offset[1]
+        self.face.set_transform(matrix, pen)
 
     def set_size(self, size):
         try:
