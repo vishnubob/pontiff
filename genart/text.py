@@ -1,8 +1,8 @@
-from __future__ import print_function
 from decimal import *
-import freetype
-import sys
 import math
+import freetype
+
+__all__ = ["Font"]
 
 def FT_CURVE_TAG(flag):
     return flag & 0x3
@@ -36,22 +36,17 @@ def from_fixed_point(num, width):
     return (num >> width) + frac
 
 class Font(object):
-    def __init__(self, fontfile, size=10, ch=' '):
-        self.ch = ch 
-        self.face = freetype.Face(fontfile)
-        self.matrix = None
-        self.set_size(size)
+    Cache = {}
 
-    def set_transform(self, angle, offset=(0, 0)):
-        matrix = freetype.FT_Matrix()
-        pen = freetype.FT_Vector()
-        matrix.xx = int(math.cos(angle) * 0x10000)
-        matrix.xy = int(-math.sin(angle) * 0x10000)
-        matrix.yx = int(math.sin(angle) * 0x10000)
-        matrix.yy = int(math.cos(angle) * 0x10000)
-        pen.x = offset[0]
-        pen.y = offset[1]
-        self.face.set_transform(matrix, pen)
+    def __init__(self, fontfile, size=10, ch=' ', angle=0, pen=(0, 0)):
+        self.ch = ch 
+        if fontfile not in self.Cache:
+            face = freetype.Face(fontfile)
+            self.Cache[fontfile] = face
+        self.face = self.Cache[fontfile]
+        self.matrix = None
+        self.set_transform(angle, pen)
+        self.set_size(size)
 
     def set_size(self, size):
         try:
@@ -63,6 +58,27 @@ class Font(object):
         fixed_width = to_fixed_point(width, 6)
         fixed_height = to_fixed_point(height, 6)
         self.face.set_char_size(fixed_width, fixed_height)
+
+    @property
+    def rotation_matrix(self):
+        matrix = freetype.FT_Matrix()
+        matrix.xx = int(math.cos(self._angle) * 0x10000)
+        matrix.xy = int(-math.sin(self._angle) * 0x10000)
+        matrix.yx = int(math.sin(self._angle) * 0x10000)
+        matrix.yy = int(math.cos(self._angle) * 0x10000)
+        return matrix
+
+    @property
+    def offset(self):
+        pen = freetype.FT_Vector()
+        pen.x = int(self._pen[0] * 64)
+        pen.y = int(self._pen[1] * 64)
+        return pen
+
+    def set_transform(self, angle=0, pen=(0, 0)):
+        self._angle = angle
+        self._pen = pen
+        self.face.set_transform(self.rotation_matrix, self.offset)
 
     @property
     def glyph(self):
@@ -88,14 +104,12 @@ class Font(object):
             contours.append(Contour(content))
         return contours
         
-    def get_path(self, ch, x=0, y=0):
-        self.ch = ch
+    def get_path(self):
         path = []
         for contour in self.get_contours():
             for pathcmd in contour.iter_path():
                 cmd = pathcmd[0]
                 points = pathcmd[1:]
-                points = [point.offset(x=x, y=y) for point in points]
                 points = str.join(' ', [str(point) for point in points])
                 cmd = "%s %s" % (cmd, points)
                 path.append(cmd)
@@ -121,9 +135,30 @@ class Font(object):
     def descender(self):
         return from_fixed_point(self.face.descender, 6)
 
-    @property
-    def size(self):
+    def _get_size(self):
         return self.face.size
+    def _set_size(self, size):
+        self.set_size(size)
+    size = property(_get_size, _set_size)
+
+    def _get_transform(self):
+        return (self._angle, self.offset)
+    def _set_transform(self, angle_offset):
+        (angle_offset) = angle_offset
+        self.set_transform(angle, offset)
+    transform = property(_get_transform, _set_transform)
+
+    def _get_angle(self):
+        return self._angle
+    def _set_angle(self, angle):
+        self._angle = _angle
+    angle = property(_get_angle, _set_angle)
+
+    def _get_pen(self):
+        return self._pen
+    def _set_pen(self, pen):
+        self._pen = pen
+    pen = property(_get_pen, _set_pen)
 
 class Point(object):
     def __init__(self, x, y, flags):
