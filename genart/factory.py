@@ -3,6 +3,9 @@
 import svgwrite
 import math
 import StringIO
+import pylru
+import PIL
+import numpy
 from . text import *
 
 __all__ = ["FaceFactory"]
@@ -11,6 +14,8 @@ class FaceFactory(object):
     def __init__(self, font_filename, size, target_size=None):
         self.font_filename = font_filename
         self.size = size
+        self.path_cache = pylru.lrucache(10000)
+        self.bitmap_cache = pylru.lrucache(10000)
         self.target_size = target_size if target_size != None else size
         self.alphabet = [chr(val) for val in range(33, 127)]
         self.rules = (
@@ -30,18 +35,11 @@ class FaceFactory(object):
                 break
 
     def build_individual(self, ptr):
-        kw = {}
+        kw = [("fontfile", self.font_filename)]
         for (attr, maxval, castfun) in self.rules:
             val = castfun(ptr.next() * maxval)
-            kw[attr] = val
-        kkw = {
-            "pen": (kw['x'], kw['y']),
-            "angle": kw["angle"],
-            "size": kw["size"],
-            "ch": kw["ch"],
-            "fontfile": self.FontFilename,
-        }
-        return kkw
+            kw.append((attr, val))
+        return tuple(kw)
 
     def get_canvas(self, svgfn):
         x_res = self.size[0]
@@ -57,9 +55,12 @@ class FaceFactory(object):
     def render(self, state, svgfn=''):
         style = "fill:none;stroke:black;stroke-width:.5"
         canvas = self.get_canvas(svgfn)
-        for face in self.builder(state):
-            face = Font(**face)
-            path = face.get_path()
+        for facekw in self.builder(state):
+            if facekw not in self.path_cache:
+                face = Font(**dict(facekw))
+                path = face.get_path(yoff=self.size[1])
+                self.path_cache[facekw] = path
+            path = self.path_cache[facekw]
             path = canvas.path(d=path, style=style)
             canvas.add(path)
         if not svgfn:
@@ -69,3 +70,20 @@ class FaceFactory(object):
         else:
             canvas.save()
             return svgfn
+
+    def render_bitmap(self, state):
+        img = PIL.Image.new('L', self.size, color=0xff)
+        for facekw in self.builder(state):
+            if facekw not in self.bitmap_cache:
+                face = Font(**dict(facekw))
+                res = face.get_bitmap()
+                (top, left, width, rows, pitch, bitmap) = res
+                inv_bitmap = [0xff - val for val in bitmap]
+                bitmap_str = str.join('', map(chr, inv_bitmap))
+                mask_str = str.join('', map(chr, bitmap))
+                fimg = PIL.Image.frombytes('L', (width, rows), bitmap_str)
+                mask = PIL.Image.frombytes('L', (width, rows), mask_str)
+                self.bitmap_cache[facekw] = (fimg, mask, (left, self.size[1] - top))
+            (bitmap, mask, anchor) = self.bitmap_cache[facekw]
+            img.paste(bitmap, anchor, mask=mask)
+        return numpy.array(img)

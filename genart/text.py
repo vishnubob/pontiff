@@ -38,15 +38,20 @@ def from_fixed_point(num, width):
 class Font(object):
     Cache = {}
 
-    def __init__(self, fontfile, size=10, ch=' ', angle=0, pen=(0, 0)):
-        self.ch = ch 
+    def __init__(self, fontfile='', size=10, ch=' ', angle=0, pen=None, x=None, y=None, flags=None):
         if fontfile not in self.Cache:
             face = freetype.Face(fontfile)
             self.Cache[fontfile] = face
-        self.face = self.Cache[fontfile]
-        self.matrix = None
-        self.set_transform(angle, pen)
-        self.set_size(size)
+        self._face = self.Cache[fontfile]
+        self.ch = ch 
+        self.flags = flags
+        self.size = size
+        if pen == None:
+            x = x if x != None else 0
+            y = y if y != None else 0
+            pen = (x, y)
+        self._pen = pen
+        self._angle = angle
 
     def set_size(self, size):
         try:
@@ -55,9 +60,7 @@ class Font(object):
             width = height = size
         self.width = width
         self.height = height
-        fixed_width = to_fixed_point(width, 6)
-        fixed_height = to_fixed_point(height, 6)
-        self.face.set_char_size(fixed_width, fixed_height)
+        self._size = (self.width, self.height)
 
     @property
     def rotation_matrix(self):
@@ -74,15 +77,22 @@ class Font(object):
         pen.x = int(self._pen[0] * 64)
         pen.y = int(self._pen[1] * 64)
         return pen
+    
+    @property
+    def face(self):
+        fixed_width = to_fixed_point(self.width, 6)
+        fixed_height = to_fixed_point(self.height, 6)
+        self._face.set_char_size(fixed_width, fixed_height)
+        self._face.set_transform(self.rotation_matrix, self.offset)
+        self._face.load_char(self.ch, flags=self.flags)
+        return self._face
 
     def set_transform(self, angle=0, pen=(0, 0)):
         self._angle = angle
         self._pen = pen
-        self.face.set_transform(self.rotation_matrix, self.offset)
 
     @property
     def glyph(self):
-        self.face.load_char(self.ch)
         return self.face.glyph
 
     @property
@@ -91,7 +101,10 @@ class Font(object):
     
     @property
     def bbox(self):
-        return self.face.bbox
+        bbox = self.face.bbox
+        attr = ("xMin", "xMax", "yMin", "yMax")
+        bbox = {key: from_fixed_point(getattr(bbox, key), 6) for key in attr}
+        return bbox
 
     def get_contours(self):
         contours = []
@@ -104,16 +117,33 @@ class Font(object):
             contours.append(Contour(content))
         return contours
         
-    def get_path(self):
+    def get_path(self, yoff=None):
         path = []
+        yoff = yoff if yoff != None else self.metrics["height"]
         for contour in self.get_contours():
             for pathcmd in contour.iter_path():
                 cmd = pathcmd[0]
                 points = pathcmd[1:]
+                points = [Point(x=pt.x, y=yoff - pt.y, flags=pt.flags) for pt in points]
                 points = str.join(' ', [str(point) for point in points])
                 cmd = "%s %s" % (cmd, points)
                 path.append(cmd)
         return str.join(' ', path)
+
+    def get_bitmap(self, radius=.001):
+        self.flags = freetype.FT_LOAD_DEFAULT | freetype.FT_LOAD_NO_BITMAP
+        glyph = self.glyph.get_glyph()
+        stroker = freetype.Stroker()
+        radius = to_fixed_point(radius, 16);
+        stroker.set(radius, freetype.FT_STROKER_LINECAP_ROUND, freetype.FT_STROKER_LINEJOIN_ROUND, 0)
+        glyph.stroke(stroker)
+        blyph = glyph.to_bitmap(freetype.FT_RENDER_MODE_NORMAL, freetype.Vector(0, 0))
+        bitmap = blyph.bitmap.buffer[:]
+        top, left = blyph.top, blyph.left
+        width, rows, pitch = blyph.bitmap.width, blyph.bitmap.rows, blyph.bitmap.pitch
+        self.flags = 0
+        ret = (top, left, width, rows, pitch, bitmap)
+        return ret
     
     def kern(self, prevch, nextch):
         vec = self.face.get_kerning(prevch, nextch)
@@ -122,6 +152,13 @@ class Font(object):
     @property
     def char_index(self):
         return self.face.get_char_index(self.ch)
+
+    @property
+    def metrics(self):
+        metrics = self.glyph.metrics
+        attr = [key for key in metrics.__class__.__dict__ if not key.startswith("__")]
+        metrics = {key: from_fixed_point(getattr(metrics, key), 6) for key in attr}
+        return metrics
 
     @property
     def advance_x(self):
@@ -136,28 +173,27 @@ class Font(object):
         return from_fixed_point(self.face.descender, 6)
 
     def _get_size(self):
-        return self.face.size
+        return self._size
     def _set_size(self, size):
         self.set_size(size)
     size = property(_get_size, _set_size)
 
     def _get_transform(self):
         return (self._angle, self.offset)
-    def _set_transform(self, angle_offset):
-        (angle_offset) = angle_offset
-        self.set_transform(angle, offset)
+    def _set_transform(self, angle_pen):
+        self.set_transform(*angle_pen)
     transform = property(_get_transform, _set_transform)
 
     def _get_angle(self):
         return self._angle
     def _set_angle(self, angle):
-        self._angle = _angle
+        self.transform = (angle, self._pen)
     angle = property(_get_angle, _set_angle)
 
     def _get_pen(self):
         return self._pen
     def _set_pen(self, pen):
-        self._pen = pen
+        self.transform = (self._angle, pen)
     pen = property(_get_pen, _set_pen)
 
 class Point(object):
@@ -187,8 +223,8 @@ class Point(object):
         y = (self.y + other.y) / 2.0
         return self.__class__(x, y, FT_CURVE_TAG_ON)
     
-    def offset(self, x, y):
-        return self.__class__(x + self.x, y - self.y, self.flags)
+    def offset(self, x=0, y=0):
+        return self.__class__(self.x + x, self.y + y, self.flags)
 
     def __str__(self):
         return "%s %s" % (self.x, self.y)

@@ -3,13 +3,17 @@ from PIL import Image
 from scipy.misc import imread, imresize
 from scipy.linalg import norm
 from scipy import sum, average
+import numpy
 
 __all__ = ["CompareImages"]
 
 class Image(object):
-    def __init__(self, filename, size=None):
-        self.filename = filename
-        self.img = imread(self.filename).astype(float)
+    def __init__(self, thing, size=None):
+        if type(thing) in (str, unicode):
+            self.filename = thing
+            self.img = imread(self.filename).astype(numpy.uint8)
+        else:
+            self.img = thing
         if size != None:
             if size != self.img.size:
                 self.img = imresize(self.img, size)
@@ -23,7 +27,7 @@ class Image(object):
             return self.img
 
     def normalize(self):
-        rng = self.img.max() - self.img.min()
+        rng = float(self.img.max() - self.img.min())
         minv = self.img.min()
         self.img = (self.img - minv) * 0xff / rng
 
