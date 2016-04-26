@@ -23,7 +23,7 @@ class FaceFactory(object):
             ("x", self.size[0], float),
             ("y", self.size[1], float),
             ("angle", 2 * math.pi, float),
-            ("size", (self.size[0] * self.size[1]) ** .5 / 32.0, float),
+            ("size", (self.size[0] * self.size[1]) ** .5 / 8.0, float),
         )
 
     def builder(self, state):
@@ -76,14 +76,22 @@ class FaceFactory(object):
         for facekw in self.builder(state):
             if facekw not in self.bitmap_cache:
                 face = Font(**dict(facekw))
-                res = face.get_bitmap()
-                (top, left, width, rows, pitch, bitmap) = res
-                inv_bitmap = [0xff - val for val in bitmap]
-                bitmap_str = str.join('', map(chr, inv_bitmap))
-                mask_str = str.join('', map(chr, bitmap))
-                fimg = PIL.Image.frombytes('L', (width, rows), bitmap_str)
-                mask = PIL.Image.frombytes('L', (width, rows), mask_str)
-                self.bitmap_cache[facekw] = (fimg, mask, (left, self.size[1] - top))
-            (bitmap, mask, anchor) = self.bitmap_cache[facekw]
+                try:
+                    res = face.get_bitmap(radius=.5)
+                    (top, left, width, rows, pitch, bitmap) = res
+                    inv_bitmap = [0xff - val for val in bitmap]
+                    bitmap_str = str.join('', map(chr, inv_bitmap))
+                    mask_str = str.join('', map(chr, bitmap))
+                    fimg = PIL.Image.frombytes('L', (width, rows), bitmap_str)
+                    mask = PIL.Image.frombytes('L', (width, rows), mask_str)
+                    self.bitmap_cache[facekw] = (fimg, mask, (left, self.size[1] - top))
+                except KeyboardInterrupt:
+                    raise
+                except:
+                    self.bitmap_cache[facekw] = None
+            res = self.bitmap_cache[facekw]
+            if res == None:
+                continue
+            (bitmap, mask, anchor) = res
             img.paste(bitmap, anchor, mask=mask)
         return numpy.array(img)

@@ -18,7 +18,8 @@ def run():
     factory = FaceFactory(font_filename, size, target_size=target_size)
     ann = ImageAnnealer(init_state, compare, factory, rootdir="/tmp/pontiff")
     ann.save(stem="initial")
-    ann.auto(5)
+    ann.anneal()
+    ann.save(stem="final")
 
 if __name__ == "__main__":
     run()

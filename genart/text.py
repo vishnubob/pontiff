@@ -134,7 +134,7 @@ class Font(object):
         self.flags = freetype.FT_LOAD_DEFAULT | freetype.FT_LOAD_NO_BITMAP
         glyph = self.glyph.get_glyph()
         stroker = freetype.Stroker()
-        radius = to_fixed_point(radius, 16);
+        radius = to_fixed_point(radius, 6);
         stroker.set(radius, freetype.FT_STROKER_LINECAP_ROUND, freetype.FT_STROKER_LINEJOIN_ROUND, 0)
         glyph.stroke(stroker)
         blyph = glyph.to_bitmap(freetype.FT_RENDER_MODE_NORMAL, freetype.Vector(0, 0))

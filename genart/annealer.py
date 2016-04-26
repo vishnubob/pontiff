@@ -29,6 +29,7 @@ class ImageAnnealer(Annealer):
         self.pngdir = os.path.join(self.rundir, "png")
         self.svgdir = os.path.join(self.rundir, "svg")
         self.statedir = os.path.join(self.rundir, "state")
+        self._last_best_state_step = 0
         os.makedirs(self.pngdir)
         os.makedirs(self.svgdir)
         os.makedirs(self.statedir)
@@ -54,7 +55,9 @@ class ImageAnnealer(Annealer):
         return self._best_state
     def set_best_state(self, state):
         self._best_state = state
-        self.save(state=state)
+        if self._last_best_state_step + 1000 < self.step:
+            self.save(state=state)
+            self._last_best_state_step = self.step
     best_state = property(get_best_state, set_best_state)
 
     def save(self, stem=None, state=None):
@@ -76,20 +79,22 @@ class ImageAnnealer(Annealer):
         with open(statefn, 'w') as fh:
             json.dump(self.state, fh)
 
-    def move(self):
+    def move(self, state=None):
+        state = state if state != None else self.state
         mode = random.choice([0, 1, 2])
         if mode == 0:
             # add
             for x in range(len(self.factory.rules)):
                 val = random.random()
-                self.state.append(val)
+                state.append(val)
         elif mode == 1:
             # remove
-            self.state = self.state[:-len(self.factory.rules)]
+            state = state[:-len(self.factory.rules)]
         elif mode == 2:
             # change
-            idx = random.randint(0, len(self.state) - 1)
-            self.state[idx] = random.random()
+            idx = random.randint(0, len(state) - 1)
+            state[idx] = random.random()
+        return state
 
     def energy_path(self):
         stemfn = "energy"
@@ -101,10 +106,10 @@ class ImageAnnealer(Annealer):
         self.step_callback(energy)
         return energy
 
-    def energy(self):
-        stemfn = "energy"
+    def energy(self, state=None):
+        self.state = state if state != None else self.state
         img = self.factory.render_bitmap(self.state)
         scores = self.compare.compare(img)
         energy = scores[0]
-        self.step_callback(energy)
+        #self.step_callback(energy)
         return energy
