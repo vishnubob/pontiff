@@ -1,6 +1,7 @@
-import PIL
-from PIL import Image
-from scipy.misc import imread, imresize
+import PIL.Image
+import PIL.ImageOps
+import PIL.ImageChops
+from scipy.misc import imsave, imread, imresize
 from scipy.linalg import norm
 from scipy import sum, average
 import numpy
@@ -8,56 +9,54 @@ import numpy
 __all__ = ["CompareImages"]
 
 class Image(object):
-    def __init__(self, thing, size=None):
+    def __init__(self, thing, mode='L', size=None, name=None):
         if type(thing) in (str, unicode):
             self.filename = thing
-            self.img = imread(self.filename).astype(numpy.uint8)
+            self.img = PIL.Image.open(self.filename)
         else:
             self.img = thing
+        self.name = name if name != None else str(id(self))
         if size != None:
             if size != self.img.size:
-                self.img = imresize(self.img, size)
-        self.to_grayscale()
-        self.normalize()
-
-    def to_grayscale(self):
-        if len(self.img.shape) == 3:
-            self.img = average(self.img, -1)  # average over the last axis (color channels)
-        else:
-            return self.img
-
-    def normalize(self):
-        rng = float(self.img.max() - self.img.min())
-        minv = self.img.min()
-        self.img = (self.img - minv) * 0xff / rng
+                self.img = self.img.resize(size)
+        if self.img.mode != mode:
+            self.img = self.img.convert(mode=mode)
+        if self.img.mode != "1":
+            self.img = PIL.ImageOps.autocontrast(self.img)
+        self.size = self.img.size
 
     def __sub__(self, other):
-        return self.img - other.img
+        return PIL.ImageChops.difference(self.img, other.img)
+    
+    def save(self, filename):
+        self.img.save(filename)
 
 class CompareImages(object):
     SizeCache = {}
 
-    def __init__(self, target_fn):
+    def __init__(self, target_fn, mode="L"):
+        self.mode = mode
         self.target_fn = target_fn
-        self.target = Image(self.target_fn)
+        self.target = Image(self.target_fn, name="target", mode=self.mode)
+        self.SizeCache[self.target.size] = self.target
 
     def get_target(self, size):
         assert len(size) == 2
         if size not in self.SizeCache:
-            img = Image(self.target_fn, size=size)
+            img = Image(self.target_fn, size=size, mode=self.mode)
             self.SizeCache[size] = img
         return self.SizeCache[size]
 
     def compare_images(self, img1, img2):
         diff = img1 - img2
+        diff = numpy.array(diff)
         # Manhattan norm
         m_norm = sum(abs(diff))
         # Zero norm
         z_norm = norm(diff.ravel(), 0)
-        return (m_norm, z_norm)
+        return (m_norm, z_norm, m_norm / diff.size, z_norm / diff.size)
 
     def compare(self, query_fn):
-        query = Image(query_fn)
-        target = self.get_target(query.img.shape[:2])
-        (n_m, n_0) = self.compare_images(query, target)
-        return (n_m, n_0, n_m / target.img.size, n_0 / target.img.size)
+        query = Image(query_fn, name="query", mode=self.mode)
+        target = self.get_target(query.size)
+        return self.compare_images(query, target)
