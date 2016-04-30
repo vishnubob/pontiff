@@ -1,6 +1,5 @@
-.*sw?
 *.pyc
-*.svg
 *.png
-*.ttf
+*.svg
+.*sw?
 tarpit
