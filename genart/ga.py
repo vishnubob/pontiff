@@ -18,7 +18,7 @@ class EvaluateWrapper(object):
         return (self.env.evaluate(state), )
 
 class GA_Runner(object):
-    def __init__(self, env, population=None, mutpb=0.2, cxpb=0.5, keep=5, initsize=1000, popsize=300, threads=-1):
+    def __init__(self, env, population=None, mutpb=0.2, cxpb=0.5, keep=5, initsize=1000, popsize=300, pool=None):
         self.env = env
         self.mutpb = mutpb
         self.cxpb = cxpb
@@ -26,10 +26,7 @@ class GA_Runner(object):
         self.popsize = popsize
         self.population = population
         self.initsize = initsize * 5
-        self.threads = threads
-        self.pool = None
-        if self.threads > 1:
-            self.pool = multiprocessing.Pool(self.threads)
+        self.pool = pool
         self.bootstrap()
 
     def evaluate(self, state):
@@ -60,9 +57,11 @@ class GA_Runner(object):
         self.toolbox.register("mate", self.crossover)
         self.toolbox.register("mutate", self.mutate)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
-        self.toolbox.register("evaluate", eval_wrapper)
         if self.pool:
             self.toolbox.register("map", self.pool.map)
+            self.toolbox.register("evaluate", lambda: "evaluate")
+        else:
+            self.toolbox.register("evaluate", eval_wrapper)
 
         # stats
         score_stats = tools.Statistics(lambda ind: ind.fitness.values)

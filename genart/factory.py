@@ -7,19 +7,23 @@ import pylru
 import PIL
 import numpy
 from . text import *
+from . cache import get_cache
 
 __all__ = ["FaceFactory"]
 
 class FaceFactory(object):
+    DEFAULT_CACHE_SIZE = 10000
+
     def __init__(self, font_filename, size):
         self.font_filename = font_filename
         self.size = size
         self.alphabet = [chr(val) for val in range(33, 127)]
+        self.cache_size = self.DEFAULT_CACHE_SIZE
         self._init()
 
     def _init(self):
-        self.path_cache = pylru.lrucache(10000)
-        self.bitmap_cache = pylru.lrucache(10000)
+        self.path_cache = get_cache(self.cache_size)
+        self.bitmap_cache = get_cache(self.cache_size)
         self.rules = (
             ("ch", len(self.alphabet) - 1, lambda i: self.alphabet[int(round(i))]),
             ("x", self.size[0], float),
@@ -86,6 +90,7 @@ class FaceFactory(object):
         img = PIL.Image.new(mode, self.size, color=0xff)
         for facekw in self.builder(state):
             ckey = facekw + ("mode", mode)
+            ckey = str(hash(ckey))
             if ckey not in self.bitmap_cache:
                 face = Font(**dict(facekw))
                 try:
