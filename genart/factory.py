@@ -5,11 +5,23 @@ import math
 import StringIO
 import pylru
 import PIL
+import freetype
 import numpy
 from . text import *
 from . cache import get_cache
 
 __all__ = ["FaceFactory"]
+
+def image_to_string(im):
+    image = {
+        'pixels': im.tobytes(),
+        'size': im.size,
+        'mode': im.mode,
+    }
+    return image
+
+def image_from_string(image):
+    return PIL.Image.frombytes(image['mode'], image['size'], image['pixels'])
 
 class FaceFactory(object):
     DEFAULT_CACHE_SIZE = 10000
@@ -71,11 +83,13 @@ class FaceFactory(object):
         style = "fill:none;stroke:black;stroke-width:.5"
         canvas = self.get_canvas(svgfn)
         for facekw in self.builder(state):
-            if facekw not in self.path_cache:
+            key = facekw
+            #key = str(hash(facekw))
+            if key not in self.path_cache:
                 face = Font(**dict(facekw))
                 path = face.get_path(yoff=self.size[1])
-                self.path_cache[facekw] = path
-            path = self.path_cache[facekw]
+                self.path_cache[key] = path
+            path = self.path_cache[key]
             path = canvas.path(d=path, style=style)
             canvas.add(path)
         if not svgfn:
@@ -89,9 +103,10 @@ class FaceFactory(object):
     def render_bitmap(self, state, mode='L'):
         img = PIL.Image.new(mode, self.size, color=0xff)
         for facekw in self.builder(state):
-            ckey = facekw + ("mode", mode)
-            ckey = str(hash(ckey))
-            if ckey not in self.bitmap_cache:
+            key = facekw
+            #key = facekw + ("mode", mode)
+            #key = str(hash(key))
+            if key not in self.bitmap_cache:
                 face = Font(**dict(facekw))
                 try:
                     res = face.get_bitmap(radius=.5)
@@ -100,15 +115,23 @@ class FaceFactory(object):
                     bitmap_str = str.join('', map(chr, inv_bitmap))
                     mask_str = str.join('', map(chr, bitmap))
                     fimg = PIL.Image.frombytes(mode, (width, rows), bitmap_str)
+                    #fimg = image_to_string(fimg)
                     mask = PIL.Image.frombytes(mode, (width, rows), mask_str)
-                    self.bitmap_cache[ckey] = (fimg, mask, (left, self.size[1] - top))
+                    #mask = image_to_string(mask)
+                    self.bitmap_cache[key] = (fimg, mask, (left, self.size[1] - top))
                 except KeyboardInterrupt:
                     raise
-                except:
-                    self.bitmap_cache[ckey] = None
-            res = self.bitmap_cache[ckey]
-            if res == None:
+                except freetype.FT_Exception:
+                    self.bitmap_cache[key] = -1
+            try:
+                res = self.bitmap_cache[key]
+            except KeyError:
+                print("cache miss: %s" % key)
+                res = -1
+            if res == -1:
                 continue
             (bitmap, mask, anchor) = res
+            #bitmap = image_from_string(bitmap)
+            #mask = image_from_string(mask)
             img.paste(bitmap, anchor, mask=mask)
         return img

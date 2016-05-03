@@ -1,6 +1,8 @@
 import os
 memcache_host = os.getenv("MEMCACHE", None)
 if memcache_host:
+    import socket
+    memcache_host = socket.gethostbyname(memcache_host)
     import pylibmc
 else:
     import pylru

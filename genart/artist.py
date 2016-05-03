@@ -46,12 +46,11 @@ class ArtistPool(object):
             aidx = idx % len(self.artists)
             artist = self.artists[aidx]
             artist.inq.put((idx, individual))
-        results = []
-        while len(results) < len(individuals):
-            results.append(self.inq.get())
+        results = [None] * len(individuals)
+        while None in results:
+            (idx, score) = self.inq.get()
             self.inq.task_done()
-        results.sort(key=operator.itemgetter(0))
-        results = [(res[1], ) for res in results]
+            results[idx] = (score, )
         return results
     
     def map(self, functor, *args):

@@ -20,6 +20,7 @@ def bootstrap(args):
     compare = CompareImages(args.target, mode=args.mode)
     env = Environment(compare, factory, rootdir=args.rootdir, runid=args.runid, target_size=target_size)
     pop = load_population(args)
+    pool = None
     if args.threads > 1:
         pool = ArtistPool(args)
     ga = GA_Runner(env, population=args.population, mutpb=args.mutpb, cxpb=args.cxpb, keep=args.keep, initsize=args.initsize, popsize=args.popsize, pool=pool)

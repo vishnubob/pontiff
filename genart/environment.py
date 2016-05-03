@@ -19,7 +19,7 @@ def weighted_choice(choices):
     assert False, "Shouldn't get here"
 
 class Environment(object):
-    def __init__(self, compare, factory, rootdir="/tmp", runid=None, add_weight=1, remove_weight=1, change_weight=10, size_limit=None, target_size=None):
+    def __init__(self, compare, factory, rootdir="/tmp", runid=None, add_weight=1, remove_weight=1, change_weight=3, size_limit=None, target_size=None):
         self.compare = compare
         self.factory = factory
         self.add_weight = add_weight
@@ -84,11 +84,12 @@ class Environment(object):
         return state
 
     def evaluate(self, state):
-        img = self.factory.render_bitmap(state, mode=self.compare.mode)
+        #img = self.factory.render_bitmap(state, mode=self.compare.mode)
+        img = self.factory.render_bitmap(state)
         if self.target_size != None:
             img = img.resize(self.target_size)
         scores = self.compare.compare(img)
-        energy = scores[1]
+        energy = scores[0]
         return energy
     
     def crossover(self, ind1, ind2):
